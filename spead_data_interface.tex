@@ -1,0 +1,659 @@
+\documentclass[11pt,english,twoside]{article}
+\usepackage{katdoc}
+\usepackage{graphicx, url,color}
+\usepackage{verbatim}
+\usepackage{longtable}
+\usepackage{hyperref}
+
+\newcommand{\docClient}{KAT-7, SKA-SA and NRF}
+\newcommand{\docProject}{SPEAD}
+\newcommand{\docType}{KAT-7 Data Interface Definition}
+
+\newcommand{\docId}{K0000-2006V1-05}
+\newcommand{\docRevision}{2}
+\newcommand{\docClassification}{Open Source, GPL}
+\newcommand{\docDate}{2013/02/11}
+\newcommand{\docCopyright}{\copyright CASPER 2012}
+
+% Format: \addcontributor{Role}{Name}{Designation}{Affiliation}{Date}
+\newcommand{\docApproval}{
+    \addcontributor{Submitted by}{R. van Rooyen}{DBE DSP Specialist}{SKA SA}{}
+    \addcontributor{Approved by}{M. Welz}{DBE Software}{SKA SA}{}
+    \addcontributor{Approved by}{J. Manley}{DBE DSP Specialist}{SKA SA}{}
+    \addcontributor{Approved by}{S. Ratcliffe}{SPT Subsystem Manager}{SKA SA}{}
+    \addcontributor{Accepted by}{F. Kapp}{DBE Subsystem Manager}{SKA SA}{}
+}
+
+% Format: \addchange{Revision}{Date}{ECN}{Comments}
+\newcommand{\docHistory}{
+    \addchange{A}{2010/12/28}{N/A}{Creation of SPEAD recommended practice document.}
+    \addchange{B}{2011/09/31}{N/A}{Updated SPEAD items.}
+    \addchange{C}{2012/06/06}{N/A}{Add new items defined for KAT-7 narrow band and single dish.}
+    \addchange{1}{2012/10/16}{N/A}{First revision release.}
+    \addchange{2}{2013/02/11}{N/A}{Addition of beamformer metadata omitted from summary table.}
+}
+
+% Format: \addprogram{Role}{Package}{Version}{Filename}
+\newcommand{\docSoftware}{
+    \addprogram{Text processor}{\LaTeX}{3.1415926-1.40.10}
+    \addprogram{Editor}{Vim}{7.2.445}
+}
+
+% Format: \abbrev{ABBREV}{Definition}
+\newcommand{\abbreviations}{
+    \abbrev{ADC}{Analog to Digital Converter}
+    \abbrev{CAM}{Control and Monitoring}
+    \abbrev{DBE}{Digital Backend}
+    \abbrev{FF}{Fringe Finder}
+    \abbrev{ICD}{Interface Control Document}
+    \abbrev{IP}{Internet Protocol}
+    \abbrev{KAT}{Karoo Array Telescope}
+    \abbrev{KATCP}{KAT Communication Protocol}
+    \abbrev{LRU}{Line Replacement Unit}
+}
+
+\newcommand{\speaditem}[4]{ {\tt #1} & \begin{tabular}{r}{\tt #2}\\{\tt #3}\end{tabular} & #4}
+
+\renewcommand{\floatpagefraction}{0.8}
+
+\hypersetup{colorlinks,
+citecolor=black,
+filecolor=black,
+linkcolor=black,
+urlcolor=black,
+pdftex
+}
+
+\begin{document}
+
+\title{KAT-7 Data Interface}
+\author{Jason Manley, Marc Welz and Simon Ratcliffe}
+\makekatdocbeginning
+
+\references{spead}
+
+
+\section{Introduction}
+
+The KAT-7 digital backend uses an FX-correlator architecture that is expected to output correlated visibility data, single dish raw voltage
+data, and tied-array data products.
+
+The correlator uses the SPEAD protocol~\cite{speadprotocolska} for the transfer of these radio astronomy data products.
+
+This document aims to describe the specifics of the SPEAD protocol as it is applied to the KAT-7 correlator.
+
+
+\section{Data exchange procedure}
+
+Before the start of the data transmission, initial \emph{ItemDescriptor} packets are sent as a number of metadata packets. In addition to
+instrument configuration parameters, these also contain the setup information of any \emph{Item}s required to transport the FPGA payloads. Once
+the descriptors have been transmitted, the receiver will be in a position to decode the option fields. These \emph{ItemDescriptor} packets are
+typically issued by a control computer, and not by FGPAs, even in cases where the FPGAs stream the actual SPEAD data. This leverages SPEAD's
+ability for multiple transmitters to contribute data to a single receiver in order to simplify the FPGA designs.
+
+A detailed description of the format of the \emph{ItemDescriptor} packets can be found in Reference~\cite{pyspead}. In general, an
+\emph{ItemDescriptor} is a special SPEAD \emph{Item} that may contain such metadata \emph{Item}s such as NAME, DESCRIPTION, TYPE, SHAPE and ID.
+This metadata allows the receiver to automatically unpack and interpret the datastream.
+
+For example, any instrument implementing a per-channel gain control will require a number of parameters to describe the digital gain setting on
+each frequency channel for every ADC. The configured parameters for this gain control will differ for individual observations, and is dependent
+on the sky temperature. The current settings for a given observation are propagated to the data receiver to be stored with the actual output
+datastream of the instrument.
+
+The following tables list the current SPEAD metadata \emph{Item}s that are sent by the KAT-7 Digital BackEnd (DBE). %These represent a list of recommended \emph{ItemIdentifier}s for the various KAT-7 modes.
+
+In the KAT-7 implementation, retransmission of all the metadata may be requested at any time, through an out-of-band KATCP control interface.
+This is to allow any new receivers to lock on to an existing datastream.
+
+% Data transmission typically begins only after all the metadata has been issued.
+
+
+\section{KAT-7 FX Correlator}\label{correlator}
+
+For the KAT-7 correlator, all the SPEAD data descriptors and metadata relevant to a selected observation mode are issued to the assigned
+receiver IP and port. The port and IP is assigned by software on the central DBE control computer.
+The following steps are performed, in order, upon initialisation or mode change:
+
+\begin{enumerate}
+\item If the system was already outputting data products, send a SPEAD end of stream notification.
+\item Send a single SPEAD heap containing the \emph{ItemDescriptor}s and system time synchronisation items.
+\item Send the SPEAD heaps containing all the \emph{ItemDescriptor}s and initial values for each ADCs' analogue gain as well as the system's digital gain stages as each input is initialised.
+\item Send the SPEAD heaps containing the \emph{ItemDescriptor}s and initial values of the labels, i.e. the names of all physical inputs, as well as baseline ordering as each input is initialised.
+\item Send a single SPEAD heap containing the static \emph{ItemDescriptor}s and initial values for most static variables and system parameters.
+\item Send a single SPEAD heap containing the \emph{ItemDescriptor}s only for the FPGA-based 10GbE output products, to enable receivers to decode the emitted data.
+\end{enumerate}
+
+Each stage is detailed below, along with its initial values. Please note that, while indicative of typical received values, the initial values
+are subject to change. Unless otherwise noted, the initial values are for the c16n400M1k (1024 channel wideband) mode.
+
+
+\subsection{Timing metadata}
+The correlator time metadata notifies the receiver that the system has been resynchronised, or that a parameter has changed that could
+potentially affect the system timing. An example is a change in the accumulation length. See Table \ref{tab:timing} for the initial values.
+
+Timing metadata is issued:
+\begin{itemize}
+\item upon entering a given correlator mode,
+\item when resynchronising,
+\item changing the accumulation period,
+\item or when explicitly requesting a metadata reissue.
+\end{itemize}
+
+\begin{table}[htdp]
+\caption{Correlator timing metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}       & {\bf Initial Value} \\ \hline
+n\_accs    & $390625$ \\ \hline
+int\_time  & $1.000$ \\ \hline
+scale\_factor\_timestamp & $12207.03125$ \\ \hline
+sync\_time & $\geq 0$ \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:timing}
+\end{table}%
+
+
+\subsection{Static metadata}
+Data descriptors and initial values for all correlator-specific static metadata are emitted in a single heap. See Table \ref{tab:static} for a
+full listing.
+
+The static metadata is issued whenever:
+\begin{itemize}
+\item the system enters a correlator or beamformer mode,
+\item the user explicitly requests a metadata reissue,
+\item if the center frequency selection change in a narrowband mode, when the DBE is only processing a subset of the digitised bandwidth.
+\end{itemize}
+
+\begin{table}[htbp]
+\caption[Correlator static metadata]{Static metadata issued by correlator modes. This is metadata that is unlikely to change during operation
+and is normally only issued at mode change.}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}       & {\bf Initial Value} \\ \hline
+adc\_clk         & 800000000\\ \hline
+n\_bls           & 36 \\ \hline
+n\_chans         & 1024 \\ \hline
+n\_ants          & 8 \\ \hline
+n\_xengs         & 16 \\ \hline
+center\_freq     & 200000000 \\ \hline
+bandwidth        & 400000000 \\ \hline
+xeng\_acc\_len   & 128 \\ \hline
+requant\_bits    & 4 \\ \hline
+feng\_pkt\_len   & 128 \\ \hline
+fft\_shift       & 1023 \\ \hline
+rx\_udp\_port    & 7148 \\ \hline
+feng\_udp\_port  & 8888 \\ \hline
+rx\_udp\_ip\_str & `192.168.10.10' \\ \hline
+feng\_start\_ip  & 167772160 \\ \hline
+xeng\_rate       & 200000000 \\ \hline
+x\_per\_fpga     & 2 \\ \hline
+n\_ants\_per\_xaui & 1 \\ \hline
+ddc\_mix\_freq   & 0 \\ \hline
+adc\_bits        & 8 \\ \hline
+xeng\_out\_bits\_per\_sample & 32 \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:static}
+\end{table}%
+
+In the event that the KAT-7 correlator is in a wideband correlator mode (is processing the full digitised bandwidth), \emph{Item} {\tt
+fft\_shift} will also be issued. This item is a bitfield describing the internal divisors used between FFT butterfly stages.
+
+The KAT-7 narrowband correlator modes do not use digital downconverters, but implement cascaded polyphase filterbanks. In this case, there are
+two FFT\_shift schedules (\emph{Items} {\tt fft\_shift\_coarse} and {\tt fft\_shift\_fine}) and two additional metadata \emph{Items}, {\tt
+coarse\_chans} and {\tt current\_coarse\_chan}, which describe the total number of channels and the selected channel in the first PFB. These
+items are only issued in narrowband modes.
+
+
+\subsection{Gain metadata}
+This SPEAD heap contains metadata for the RF gain and EQ settings. See Table \ref{tab:gain} initial values expected in wide band mode.
+
+Gain metadata is issued whenever:
+
+\begin{itemize}
+\item the system enters a correlator or beamformer mode,
+\item the user explicitly requests a metadata reissue,
+\item or any input's gain setting is altered.
+\end{itemize}
+
+\begin{table}[htbp]
+\caption{Correlator gain metadata}
+\begin{center}
+\begin{tabular}{|c|c|} \hline
+{\bf Name}     & {\bf Initial Value} \\ \hline
+rf\_gain\_\textit{ant\_str0\dag} & 4 \\ \hline
+rf\_gain\_\textit{ant\_str1\dag} & 4 \\ \hline
+rf\_gain\_\textit{ant\_str2\dag} & 4 \\ \hline
+$\vdots$           & $\vdots$ \\ \hline
+rf\_gain\_\textit{ant\_str15\dag} & 4 \\ \hline
+
+eq\_coef\_\textit{ant\_str0\dag} & [300,300,300... 300] \\ \hline
+eq\_coef\_\textit{ant\_str1\dag} & [300,300,300... 300] \\ \hline
+eq\_coef\_\textit{ant\_str2\dag} & [300,300,300... 300] \\ \hline
+$\vdots$           & $\vdots$ \\ \hline
+eq\_coef\_\textit{ant\_str15\dag} & [300,300,300... 300] \\ \hline
+\end{tabular}
+\\ \vspace{10pt}
+\dag The italicised suffix refers to the user-assigned input name.\\
+\end{center}
+\label{tab:gain}
+\end{table}%
+
+The equaliser coefficients are complex scale factors, applied by the F-engines prior to 4 bit re-quantisation. Each input applies a separate
+complex scale factor for each frequency in the system. The length of each array is thus given by the \emph{Item} {\tt n\_chans}.
+
+\subsection{Input and baseline labelling}\label{sec:corrlabelling}
+The SPEAD labelling metadata items describe the labelling, location and connections of the system's analogue inputs and their mappings to output
+baselines. See Table \ref{tab:corrlabelling} for expected labelling metadata.
+
+The correlator input labelling metadata product is issued whenever:
+\begin{itemize}
+\item the system enters a correlator or beamformer mode,
+\item the user explicitly requests a metadata reissue,
+\item or any input is renamed by the user.
+\end{itemize}
+
+\begin{table}[htbp]
+\caption{Correlator input labelling metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}     & {\bf Initial Value} \\ \hline
+bls\_ordering  & 
+\begin{tabular}{|c|c|}
+%    \cline{2-5}
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\ \hline
+`0x'&`0x' \\ \hline
+`0y'&`0y' \\ \hline
+`0x'&`0y' \\ \hline
+$\vdots$ & $\vdots$ \\ \hline
+`2y'&`7x' \\ \hline
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\
+\end{tabular}
+ \\ \hline
+input\_labelling & 
+
+\begin{tabular}{|c|c|c|c|}
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\ \hline
+`0x' & 0 & `roach030267' & 0\\ \hline
+`0y' & 1 & `roach030267' & 1\\ \hline
+`1x' & 2 & `roach030277' & 0\\ \hline
+$\vdots$ & $\vdots$ & $\vdots$ & $\vdots$ \\ \hline
+`7y' & 15 & `roach030234' & 1\\ \hline
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\
+\end{tabular}
+
+ \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:corrlabelling}
+\end{table}%
+
+For KAT-7, the input labelling item is a 2-D array with dimensions $N\times4$ for $N$ analogue inputs. Each analogue input $N$, indexed by a
+system-wide unique input number, is described by an array of the form:
+
+\begin{quote}
+\textit{[string]}  user-assigned\_antenna\_name, \\
+\textit{[integer]} instrument-wide\_unique\_input\_number, \\
+\textit{[string]}  LRU, \\
+\textit{[integer]} input\_number\_on\_this\_LRU\\
+\end{quote}
+The user-assigned antenna name is as specified through the DBE CAM interface.
+
+The instrument-wide unique input number is an integer describing the logical interface of this instrument. The afore-mentioned antenna is
+connected to this interface. In the case of KAT-7, this number ranges from 0 to 15. The first two system inputs are connected to either a dummy
+load or a noise sources, which are used for self-tests while the remaining 14 inputs are used for antenna inputs.
+
+The LRU is a hardware identifier for a line-replaceable-unit. KAT-7 F-engines are populated with a single dual-input ADC each and hence each have two
+analogue inputs per LRU. The input numbers thus ranges from 0 to 1 on each LRU.
+
+An example example baseline entry might be: \textit{(`antC23y'~,~12~,~`roach030267'~,~1)}.
+
+The baseline ordering item lists the output order of the X-engines. The form is a matrix with dimensions of $N\times2$, for $N$ baselines. Each
+line contains two strings of user-defined antenna names (`input1',`input2'). Two baseline example: [(`antC23x',`antC23y'), (`antB12y',`antA29y')].
+
+
+\subsection{Hardware heaps}
+SPEAD data descriptors are issued from the control computer for the correlator's FPGA-based 10GbE output in order to enable receivers to decode
+the data. This is the highspeed stream of heaps emitted from all X-engines. See Table \ref{tab:hw}.
+
+\begin{table}[htbp]
+\caption{Correlator hardware heaps}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name} & {\bf Initial Value} \\ \hline
+timestamp & $\geq 0$ \\ \hline
+xeng\_raw & multi-dimensional binary array\\ \hline
+\end{tabular}
+\end{center}
+\label{tab:hw}
+\end{table}%
+
+The KAT-7 correlator's datastream output (ID 0x1800) is collected into a single \emph{Heap} by the receiver. This provides a convenient model
+for a single receiver, but this solution does not scale well for large systems with multiple, distributed receivers. In these cases we will need
+multiple {\tt xeng\_raw} outputs, each going to a separate receiver. The simplest way to achieve this is to split the output of each X-engine
+into a separate SPEAD stream, as is done for the beamformer. In this case, each receiver would receive all baselines for a subset of the band.
+This was implemented for early prototype systems with separate heaps from each X-engine in the system, with each heap containing the SPEAD item
+with ID 0x1800+\emph{inputN} (instead of item ID 0x1800) representing a subset of the band. KAT-7 no longer supports this output mode as, in all
+cases, the correlator output datarates are considered low enough for a single receiver to cope with the entire structure of all dataproducts.
+
+\section{Frequency-domain beamformer}
+KAT-7's beamformer is added-on to the correlator discussed in \S\ref{correlator}. Much of the underlying infrastructure is shared between these
+two instruments. If the selected correlator mode also supports frequency-domain beamforming, additional beamformer metadata will be issued
+during initialisation, after the normal correlator metadata. This metadata is detailed here.
+
+Multiple, simultaneous beams are supported by KAT-7 (initially one for each of the two polarisations). It is intended that each beamformer's
+output will be routed to separate SPEAD receiver(s) and so no attempt was made to keep variable names globally unique. All beamformer-applicable
+metadata is reissued to each receiver's network port using the same SPEAD Item IDs and variable names.
+
+The beamformer metadata is issued in the following order upon initialisation, mode change or metadata reissue request:
+
+\begin{enumerate}
+\item If the system was already outputting data products, a SPEAD end of stream notification is issued.
+\item A single SPEAD \emph{Heap} containing the \emph{ItemDescriptor}s and system time synchronisation items is issued.
+\item SPEAD \emph{Heap}s containing all the \emph{ItemDescriptor}s and initial values for each ADCs' analogue gain as well as the beamformer's static weights and digital gain stages are issued as each input is initialised.
+\item A single SPEAD \emph{Heap} containing the static \emph{ItemDescriptor}s and initial values for most static variables and system parameters is issued.
+\item SPEAD \emph{Heap}s containing the \emph{ItemDescriptor}s and labels of all physical inputs are issued as each input is initialised.
+\item A single SPEAD \emph{Heap} is issued, containing the \emph{ItemDescriptor}s only for the FPGA-based 10GbE output products, to enable receivers to decode the emitted data.
+\end{enumerate}
+
+The following subsections describe the \emph{Heap}s issued for KAT-7's frequency-domain beamformer.
+
+\subsection{Input labelling}
+\begin{table}[htbp]
+\caption{Beamformer input labelling metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}        & {\bf Initial Value} \\ \hline
+input\_labelling & 
+
+\begin{tabular}{|c|c|c|c|}
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\ \hline
+`0x' & 0 & `roach030267' & 0\\ \hline
+`1x' & 2 & `roach030277' & 1\\ \hline
+$\vdots$  & $\vdots$ & $\vdots$ & $\vdots$ \\ \hline
+`7x' & 14 & `roach030234' & 7\\ \hline
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{} & \multicolumn{1}{c}{}\\
+\end{tabular}
+\\ \hline
+\end{tabular}
+\end{center}
+\label{tab:bflabelling}
+\end{table}%
+
+Beamformer input labelling metadata items describing the labelling, location and connections of the system's analogue inputs are issued whenever:
+
+\begin{itemize}
+\item the system enters a correlator mode that supports beamformer functions
+\item the user explicitly requests a metadata reissue
+\item any input is renamed by the user.
+\end{itemize}
+
+KAT-7's beamformer follows the same labelling scheme as the KAT-7 correlator (see \S\ref{sec:corrlabelling}), but with only the subset of items
+described in Table \ref{tab:bflabelling}. 
+
+In the case of sub-arraying, where only a subset of the system's inputs are summed, only inputs applicable to this beam are emitted. This item
+thus informs the receiver which inputs are being summed to construct this beam. 
+
+
+\subsection{Input scaling and weightings}
+This is designed to propagate the current beam weightings that are being applied to each input. In KAT-7's case, this is a per-input,
+per-frequency complex value, allowing for correction of phase and amplitude mismatches between analogue inputs and also to configure the
+relative contributions of each input to the summed beam. 
+
+\begin{table}[htbp]
+\caption{Beamformer scaling metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}          & {\bf Initial Value} \\ \hline
+rf\_gain\_\textit{ant\_str0\dag} & 4 \\ \hline
+rf\_gain\_\textit{ant\_str1\dag} & 4 \\ \hline
+rf\_gain\_\textit{ant\_str2\dag} & 4 \\ \hline
+...                & ... \\ \hline
+rf\_gain\_\textit{ant\_str15\dag} & 4 \\ \hline
+eq\_coef\_\textit{ant\_str0\dag} & [300,300,300... 300] \\ \hline
+eq\_coef\_\textit{ant\_str1\dag} & [300,300,300... 300] \\ \hline
+eq\_coef\_\textit{ant\_str2\dag} & [300,300,300... 300] \\ \hline
+...                & ... \\ \hline
+eq\_coef\_\textit{ant\_str15\dag} & [300,300,300... 300] \\ \hline
+
+beamweight\_\textit{ant\_str0\dag} & [1.0+1.0j,1.0+1.0j, ... 1.0+1.0j] \\ \hline
+beamweight\_\textit{ant\_str1\dag} & [1.0+1.0j,1.0+1.0j, ... 1.0+1.0j] \\ \hline
+beamweight\_\textit{ant\_str2\dag} & [1.0+1.0j,1.0+1.0j, ... 1.0+1.0j] \\ \hline
+...                & ... \\ \hline
+beamweight\_\textit{ant\_str15\dag} & [1.0+1.0j,1.0+1.0j, ... 1.0+1.0j] \\ \hline
+\end{tabular}
+\\ \vspace{10pt}
+\dag The italicised suffix refer to the user-assigned input name.\\
+\end{center}
+\label{tab:bfscaling}
+\end{table}%
+
+The beam weightings are complex scale factors, applied by the B engines to the incoming 4 bit numbers before summing. Each input applies a
+separate complex scale factor for each frequency in the system (as with {\tt eq\_coef}, the length of each array is thus given by the \emph{Item}
+{\tt n\_chans}).
+
+\subsection{Beamformer static metadata}
+The beamformer static metadata will take the form of a SPEAD heap containing static variables.
+
+\begin{table}[htbp]
+\caption{Beamformer static metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name} & {\bf Nominal Value} \\ \hline
+adc\_clk         & 800000000\\ \hline
+n\_chans         & 1024 \\ \hline
+n\_ants          & 8 \\ \hline
+n\_bengs         & 16 \\ \hline
+%n\_subsets       & 1 \\ \hline
+center\_freq     & 200000000 \\ \hline
+bandwidth        & 400000000 \\ \hline
+xeng\_acc\_len   & 128 \\ \hline
+requant\_bits    & 4 \\ \hline
+fft\_shift       & 1023 \\ \hline
+feng\_pkt\_len   & 128 \\ \hline
+ddc\_mix\_freq   & 0 \\ \hline
+adc\_bits        & 8 \\ \hline
+rx\_udp\_port    & 7148 \\ \hline
+rx\_udp\_ip\_str & `192.168.10.10' \\ \hline
+beng\_out\_bits\_per\_sample & 8 \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:beamformerstatic}
+\end{table}%
+
+KAT-7's wideband sample clock rate is fixed for the wideband mode, however, the processed centre frequency and bandwidth values will change
+depending on the selected beamformer band (see \S\ref{sec:beamformerhwout}).
+
+\subsection{Beamformer timing}
+The beamformer's timing follows the correlator's timing precisely and is detailed in Table \ref{tab:bftiming}.
+
+\begin{table}[htdp]
+\caption{Beamformer timing metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name}       & {\bf Initial Value} \\ \hline
+scale\_factor\_timestamp & $12207.03125$ \\ \hline
+sync\_time & $\geq 0$ \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:bftiming}
+\end{table}%
+
+
+\subsection{Beamformer hardware output}\label{sec:beamformerhwout}
+The beamformer hardware outputs a number of frequency channels, given by the \emph{Item} {\tt n\_chans}. These channels are processed by a number
+of engines (\emph{n\_bengs}) and the beamformer output can be chosen from each of these engines). KAT-7 has 16 B-engines and digitises a 400MHz
+band, allowing for the output centre frequency and bandwidth to be chosen in increments of $\frac{400MHz}{16}=25$MHz. Data for unused portions
+of the band will not be emitted, so this feature can be used to save data bandwidth in the event that the full analogue band is not needed.
+
+Beams can be arbitrarily renamed and the output SPEAD variable name will reflect this string precisely. No provision is made to prevent
+overlapping namespaces nor are there any safety or sanity checks done on the chosen name.
+
+The beam name, centre frequency, bandwidth, output IP address and port etc. are configured through a separate CAM interface which falls outside
+of the scope of this document.
+
+\begin{table}[htbp]
+\caption{Additional beamformer hardware metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name} & {\bf Nominal Value} \\ \hline
+\emph{MyBeam} & The raw beamformer data. \\ \hline
+timestamp & The FPGA timestamp of the first data sample in the data block. \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:beamformerhw}
+\end{table}%
+
+Beamformer data is emitted as a time series of spectra. It is presented in frames of {\tt n\_chans} by {\tt feng\_pkt\_len} complex integer numbers.
+
+
+\begin{comment}
+\section{Raw voltage capture mode}
+This mode allows for raw streaming of ADC voltages for one or both polarisations. 
+
+Upon entering the raw voltage capture mode, the following SPEAD metadata is issued:
+
+\begin{enumerate}
+\item If the system was already outputting data products, a SPEAD end of stream notification is issued.
+\item A single SPEAD \emph{Heap} containing the \emph{ItemDescriptor}s and system time synchronisation \emph{Item}s is issued.
+\item A SPEAD \emph{Heap} containing all the \emph{ItemDescriptor}s and initial values for each ADCs' analogue gain as well as the system's digital gain stages is issued as each input is initialised.
+\item A SPEAD \emph{Heap} containing the \emph{ItemDescriptor}s and initial values of the labels (names) of all physical inputs is issued as each input is initialised.
+\item A single SPEAD \emph{Heap} containing the static \emph{ItemDescriptor}s and initial values for most static variables and system parameters is issued.
+\item A single SPEAD \emph{Heap} containing the \emph{ItemDescriptor}s only for the FPGA-based 10GbE output products is issued to enable receivers to decode the emitted data.
+\end{enumerate}
+
+\subsection{Static metadata}
+Parameter list for Raw Baseband Voltage Capture mode.
+\begin{table}[htbp]
+\caption{Raw baseband voltage streamer static metadata}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name} & {\bf Nominal Value} \\ \hline
+adc\_clk & 800000000\\ \hline
+n\_inputs & 1 or 2\\ \hline
+center\_freq & 200000000\\ \hline
+bandwidth    & 400000000\\ \hline
+pkt\_len     & 4096\\ \hline
+rx\_udp\_port & 7148\\ \hline
+dest\_ip\_str & `192.168.10.10'\\ \hline
+adc\_bits     & 8\\ \hline
+bits\_per\_sample & 4 or 8 \\ \hline
+sync\_time & $\geq$0 \\ \hline
+scale\_factor\_timestamp & 800000000/4096=195312.5\\ \hline
+\end{tabular}
+\end{center}
+\label{tab:rawstatic}
+\end{table}%
+
+\subsection{Input labelling and timing metadata}
+The raw streaming input labelling and timing metadata products are identical to those of the beamformer.
+
+
+\subsection{Hardware metadata}
+Description to be added...
+\begin{table}[htbdp]
+\caption{Raw baseband voltage streamer hardware heaps}
+\begin{center}
+\begin{tabular}{|l|c|} \hline
+{\bf Name} & {\bf Nominal Value} \\ \hline
+timestamp\_\emph{MyAntStr} & \\ \hline
+raw\_data\_\emph{MyAntStr} & \\ \hline
+\end{tabular}
+\end{center}
+\label{tab:rawhardware}
+\end{table}%
+
+\subsection{Gain metadata}
+The SPEAD \emph{Heaps} for the RF gain and EQ settings in raw mode are identical to the correlator's. See Table \ref{tab:gain}.
+
+\end{comment}
+%\pagebreak
+\section{Complete KAT-7 DBE metadata listing}
+Implementation Note: To remain completely implementation agnostic, Unix time and SI units of measurement are used wherever possible. It is
+strongly encouraged that this model be used moving forward.
+
+In some cases, uint data types were specified which might be specific to KAT-7. For example, when propagating the synchronisation time, we are
+assured in KAT-7 that we will always synchronise to exactly a second boundary since the FPGAs realign to a 1PPS pulse by design. So there is no
+point being able to specify fractions of a second for sync\_time. For this reason, the sync\_time variable is an integer. However, another
+system might allow syncing to within less than one second or support fractional start times. In these cases, you would probably want to use floating
+point numbers with a defined precision.
+
+In this document, the size {\tt spead.ADDRSIZE} means that the width of the field is inherited from the SPEAD flavour. In KAT-7's case, this is
+40 bits from SPEAD64-40. However, this could be any SPEAD-compliant value. The reason it's not hard-coded is so that if we change the SPEAD
+flavour, the code scales appropriately. This allows for use of the more efficient IMMEDIATE addressing mode. See the SPEAD reference document
+for more information~\cite{speadprotocolska}. % \textcolor{red}{ADD REFERENCE HERE}.
+
+%\pagebreak
+
+\begin{center}
+\begin{longtable}{|c|r|p{7cm}|}\hline
+\caption[\emph{ItemID}-ordered listing of all metadata]{A list of all the defined metadata in use on KAT-7, ordered by \emph{Item} ID.} \label{tab:itemlist} \\
+\hline \multicolumn{1}{|c|}{\textbf{ID}} & \multicolumn{1}{c|}{\textbf{Name and Type}} & \multicolumn{1}{p{7cm}|}{\textbf{Description}} \\ \hline 
+\endfirsthead
+\multicolumn{3}{c}%
+{{\bfseries \tablename\ \thetable{} ... continued from previous page}} \\
+\hline \multicolumn{1}{|c|}{\textbf{ID}} &
+\multicolumn{1}{c|}{\textbf{Name and Type}} &
+\multicolumn{1}{p{7cm}|}{\textbf{Description}} \\ \hline 
+\endhead
+\multicolumn{3}{|r|}{{Continued on next page...}} \\ 
+\endfoot
+\hline \hline
+\endlastfoot
+
+\speaditem{0x1007}{adc\_clk}{(`u'$^\dag$,64)}{Clock rate of ADC (samples per second).} \\ \hline
+\speaditem{0x1008}{n\_bls}{(`u',spead.ADDRSIZE$^\ddag$)}{The total number of baselines in the data product.} \\ \hline
+\speaditem{0x1009}{n\_chans}{(`u',spead.ADDRSIZE)}{The total number of frequency channels present in any integration.} \\ \hline
+\speaditem{0x100A}{n\_ants}{(`u',spead.ADDRSIZE)}{The total number of dual-pol antennas in the system.} \\ \hline
+\speaditem{0x100B}{n\_xengs}{(`u',spead.ADDRSIZE)}{The total number of X engines in a correlator system.} \\ \hline
+\speaditem{0x100C}{bls\_ordering}{2-D array of strings}{The X-engine baseline output ordering. The form is a list of arrays of strings of user-defined antenna names ('input1','input2').  For example,\newline[('antC23x','antC23y'), ('antB12y','antA29y')]} \\ \hline
+\speaditem{0x100D}{crosspol\_ordering}{string pair}{The output ordering of the cross-pol terms. Packed as a pair of characters, pol1,pol2. DEPRECATED: New mechanism uses 0x100E and 0x100C to describe each physical input individually, irrespective of polarisation.}\\ \hline
+\speaditem{0x100E}{input\_labelling}{string}{The physical location of each antenna's connection. It is an array of structures, each with the following form in the case of KAT-7: (user-assigned\_antenna\_name, systemwide\_unique\_input\_number, LRU, input\_number\_on\_this\_LRU). An example entry might be: ('antC23y',12,'roach030267',3)} \\ \hline
+\speaditem{0x100F}{n\_bengs}{(`u',spead.ADDRSIZE)}{The total number of B engines in a beamformer system.} \\ \hline
+\speaditem{0x1011}{center\_freq}{(`f',64)}{The center frequency of the DBE in Hz, 64-bit IEEE floating-point number.} \\ \hline
+\speaditem{0x1013}{bandwidth}{(`f',64)}{The analogue bandwidth of the digitally processed signal in Hz.} \\ \hline
+\speaditem{0x1015}{n\_accs}{(`u',spead.ADDRSIZE)}{The number of spectra that are accumulated per integration.} \\ \hline
+\speaditem{0x1016}{int\_time}{(`f',64)}{Approximate (it's a float!) time per accumulation in seconds. This is intended for reference only. Each accumulation has an associated timestamp which should be used to determine the time of the integration rather than incrementing the start time by this value for sequential integrations (which would allow errors to grow).} \\ \hline
+\speaditem{0x1017}{coarse\_chans}{(`u',spead.ADDRSIZE)}{The number of coarse channels (ie of the first PFB) in a cascaded PFB narrowband correlator design.} \\ \hline
+\speaditem{0x1018}{current\_coarse\_chan}{(`u',spead.ADDRSIZE)}{The currently selected coarse channel (ie of the first PFB) in a cascaded PFB narrowband correlator design.} \\ \hline
+\speaditem{0x101C}{fft\_shift\_fine}{(`u',spead.ADDRSIZE)}{The FFT bitshift pattern for the fine channelisation FFT. F-engine correlator internals.} \\ \hline
+\speaditem{0x101D}{fft\_shift\_coarse}{(`u',spead.ADDRSIZE)}{The FFT bitshift pattern for the first (coarse) channelisation FFT. F-engine correlator internals.} \\ \hline
+\speaditem{0x101E}{fft\_shift}{(`u',spead.ADDRSIZE)}{The FFT bitshift pattern. F-engine correlator internals.} \\ \hline
+\speaditem{0x101F}{xeng\_acc\_len}{(`u',spead.ADDRSIZE)}{Number of spectra accumulated inside X engine. Determines minimum integration time and user-configurable integration time stepsize. X-engine correlator internals.} \\ \hline
+\speaditem{0x1020}{requant\_bits}{(`u',spead.ADDRSIZE)}{Number of bits per sample after requantisation. For FX correlators, this represents the number of bits after requantisation in the F engines (post FFT and any phasing stages) and is the actual number of bits used in X-engine processing. For time-domain systems, this is requantisation in the time domain before any subsequent processing.} \\ \hline
+\speaditem{0x1021}{feng\_pkt\_len}{(`u',spead.ADDRSIZE)}{Payload size of 10GbE packet exchange between F and X engines in 64 bit words. Usually equal to the number of spectra accumulated inside X engine. F-engine correlator internals.} \\ \hline
+\speaditem{0x1022}{rx\_udp\_port}{(`u',spead.ADDRSIZE)}{Destination UDP port for data output.} \\ \hline
+\speaditem{0x1023}{feng\_udp\_port}{(`u',spead.ADDRSIZE)}{Destination UDP port for F engine data exchange.} \\ \hline
+\speaditem{0x1024}{rx\_udp\_ip\_str}{string}{Destination IP address for output UDP packets.} \\ \hline
+\speaditem{0x1025}{feng\_start\_ip}{(`u',spead.ADDRSIZE)}{F engine starting IP address.} \\ \hline
+\speaditem{0x1026}{xeng\_rate}{(`u',spead.ADDRSIZE)}{Target clock rate of processing engines (xeng).} \\ \hline
+\speaditem{0x1027}{sync\_time}{(`u',spead.ADDRSIZE)}{Time at which the system was last synchronised (armed and triggered by a 1PPS) in seconds since the Unix Epoch.} \\ \hline
+\speaditem{0x1040}{n\_stokes}{(`u',spead.ADDRSIZE)}{The number of Stokes parameters processed by this correlator. DEPRECATED. This field has been replaced by individual labelling of each physical input and correlator baseline output listing, irrespective if two polarisations of the same antenna or different antennas. Thus, it makes no difference how many cross-pol terms are calculated as each is listed individually. See 0x100C and 0x100E instead.} \\ \hline
+\speaditem{0x1041}{x\_per\_fpga}{(`u',spead.ADDRSIZE)}{Number of X engines per FPGA.} \\ \hline
+\speaditem{0x1042}{n\_ants\_per\_xaui}{(`u',spead.ADDRSIZE)}{Number of antennas' data per XAUI link.} \\ \hline
+\speaditem{0x1043}{ddc\_mix\_freq}{(`f',64)}{Digital downconverter mixing freqency as a fraction of the ADC sampling frequency. eg: 0.25. Set to zero if no DDC is present.} \\ \hline
+\speaditem{0x1044}{ddc\_bandwidth}{(`f',64)}{Digital downconverter output bandwidth or decimation factor. DEPRECATED. Use ID 0x013 instead.} \\ \hline
+\speaditem{0x1045}{adc\_bits}{(`u',spead.ADDRSIZE)}{ADC resolution (number of bits).} \\ \hline
+\speaditem{0x1046}{scale\_factor\_timestamp}{(`f',64)}{Timestamp scaling factor. Divide the SPEAD data packet timestamp by this number to get back to seconds since last sync.} \\ \hline
+\speaditem{0x1047}{b\_per\_fpga}{(`u',spead.ADDRSIZE)}{Number of B engines per FPGA.} \\ \hline
+\speaditem{0x1048}{xeng\_out\_bits\_per\_sample}{(`u',spead.ADDRSIZE)}{The number of bits per value of the xeng accumulator output. Note this is for a single component value, not the combined complex size.} \\ \hline
+\speaditem{0x1049}{f\_per\_fpga}{(`u',spead.ADDRSIZE)}{Number of F engines per FPGA.} \\ \hline
+\speaditem{0x1050}{beng\_out\_bits\_per\_sample}{(`u',spead.ADDRSIZE)}{The number of bits per value of the beng accumulator output. Note this is for a single component value, not the combined complex size.} \\ \hline
+\speaditem{0x1200+\emph{inputN}}{rf\_gain\_\emph{MyAntStr}}{(`f',64)}{The analogue RF gain applied at the ADC for \emph{inputN} in dB.} \\ \hline
+\speaditem{0x1400+\emph{inputN}}{eq\_coef\_\emph{MyAntStr}}{(`u',32)}{The unitless per-channel digital scaling factors implemented prior to requantisation, post-FFT, for \emph{inputN}. Complex number real,imag 32 bit integers.} \\ \hline
+\speaditem{0x1600}{timestamp}{(`u',spead.ADDRSIZE)}{Timestamp of start of this integration. \emph{uint} counting multiples of ADC samples since last sync ({\tt sync\_time}, {\tt id=0x1027}). Divide this number by {\tt timestamp\_scale} ({\tt id=0x1046}) to get back to seconds since last sync when this integration was actually started. Note that the receiver will need to figure out the centre timestamp of the accumulation (eg, by adding half of {\tt int\_time}, {\tt id 0x1016}).} \\ \hline
+\speaditem{0x1800}{xeng\_raw}{(int32,(n\_chans,n\_bls,2))}{Raw data stream from all the X-engines in the system. For KAT-7, this item represents a full spectrum (all frequency channels) assembled from lowest frequency to highest frequency. Each frequency channel contains the data for all baselines ({\tt n\_bls} given by SPEAD {\tt Id=0x100B}). Each value is a complex number -- two (real and imaginary) unsigned integers.} \\ \hline
+\speaditem {0x3100}{n\_inputs}{(`u',spead.ADDRSIZE)}{The total number of analogue inputs in the stream.} \\ \hline
+\speaditem {0x3103}{pkt\_len}{(`u',spead.ADDRSIZE)}{Payload size of 10GbE packet.} \\ \hline
+\speaditem{0x3300+\emph{inputN}}{raw\_data\_\emph{MyAntStr}}{\begin{tabular}{r}(int8,4096) \\ or (('i',4),('i',4))\end{tabular}}{Raw time-domain data stream from the ADC(s). The values in the stream may either be represented by a signed 8b integer value, or else by two 4b integer samples, one from each polarisation, that are interleaved.} \\ \hline
+\speaditem {0xb000}{\emph{MyBeamName}}{(int8, (n\_chans, xeng\_acc\_len,2))}{Beamformer output for frequency-domain beam, band subset number \emph{subsetN}.} \\ \hline
+\speaditem{0x2000+\emph{inputN}}{beamweight\_\emph{MyAntStr}}{(`u',32)}{The unitless per-channel digital scaling factors
+implemented prior to combining signals for beamformer, for \emph{inputN}, per beam. Complex number real,imag 32 bit integers.} \\ \hline
+
+\end{longtable}
+\end{center}
+
+\end{document}
+
+

@@ -1,0 +1,308 @@
+% File: katdoc.sty
+% Subject: Stylesheet for KAT document
+% Author: A. Pinska; based on template by R.T. Lord and J.C. Guzman
+\ProvidesPackage{katdoc}
+\setcounter{errorcontextlines}{999}
+
+\newcommand{\stylesheetVersion}{1.1.2}
+
+\usepackage{graphicx}
+\usepackage{lastpage}
+\usepackage{mathptmx}
+\usepackage[T1]{fontenc}
+\usepackage[latin1]{inputenc}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{babel}
+\usepackage{fancyhdr}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{ifthen}
+
+\geometry{verbose,a4paper,tmargin=32mm,bmargin=27mm,lmargin=21mm,rmargin=19mm,headheight=10mm,headsep=12mm,footskip=12mm}
+\pagestyle{empty}
+\setlength{\parskip}{\medskipamount}
+\setlength{\parindent}{0pt}
+\pagenumbering{arabic}
+\setlength{\unitlength}{1mm}
+
+% Template revision
+\newcommand{\templateVersion}{???}
+
+% Front Cover
+\newcommand{\addcontributor}[5]{
+#1 & #2 & #3 & #4 & #5 & \\
+\hline
+}
+
+\newcommand{\addchange}[4]{
+#1 & #2 & #3 & #4 \\
+\hline
+}
+
+\newcommand{\addprogram}[3]{
+#1 & #2 & #3 \\
+\hline
+}
+
+\renewcommand{\maketitle}{
+    \begin{titlepage}
+        \begin{center}
+
+        % SKA logo
+        \begin{figure}
+            \begin{center}
+                \includegraphics{images/ska_logo}
+            \end{center}
+        \end{figure}
+        \vspace{2cm}
+
+        \renewcommand{\arraystretch}{1.5}
+
+        % Client Table
+        \Large
+        \begin{tabularx}{0.75\textwidth}{|Xr|}
+        \hline
+        \textbf{Client:} & \docClient \\
+        \hline
+        \textbf{Project:} & \docProject \\
+        \hline
+        \textbf{Type:} & \docType \\
+        \hline
+        \end{tabularx}
+        \vspace{1cm}
+
+        % Title
+        \huge
+        \textbf{\@title}
+        \vspace{1cm}
+
+        % Document Information Table
+        \Large
+        \begin{tabularx}{0.75\textwidth}{|Xr|}
+        \hline
+        \textbf{Document number:} & \docId \\
+        \hline
+        \textbf{Revision:} & \docRevision \\
+        \hline
+        \textbf{Classification:} & \docClassification \\
+        \hline
+        \textbf{Author:} & \@author \\
+        \hline
+        \textbf{Date:} & \docDate \\
+        \hline
+        \end{tabularx}
+
+        \newpage{}
+
+        % Approval Table
+        \begin{minipage}[c]{\textwidth}
+        \begin{center}
+        \LARGE
+        \textbf{Document Approval}
+        \vspace{0.5cm}
+
+        % lots of padding for signatures
+        \renewcommand{\arraystretch}{2.0}
+
+        \normalsize
+        \begin{tabularx}{\textwidth}{|l|l|l|l|X|X|}
+            \hline
+            Function & Name & Designation & Affiliation & Date & Signature \\
+            \hline
+            \docApproval
+        \end{tabularx}
+        \end{center}
+        \end{minipage}
+
+        \vspace{1cm}
+
+        % Document History
+        \begin{minipage}[c]{\textwidth}
+        \begin{center}
+        \LARGE
+        \textbf{Document History}
+        \vspace{0.5cm}
+
+        \renewcommand{\arraystretch}{1.2}
+        \normalsize
+        \begin{tabular}{|p{0.1\textwidth}|p{0.15\textwidth}|p{0.15\textwidth}|p{0.5\textwidth}|}
+            \hline
+            Revision & Date of Issue & ECN Number & Comments \\
+            \hline
+            \docHistory
+        \end{tabular}
+        \end{center}
+        \end{minipage}
+
+        \vspace{1cm}
+
+        % Document Software
+        \begin{minipage}[c]{\textwidth}
+        \begin{center}
+        \LARGE
+        \textbf{Document Software}
+        \vspace{0.5cm}
+
+        \normalsize
+        \begin{tabularx}{\textwidth}{|l|l|X|}
+            \hline
+            Task & Package & Version \\
+            \hline
+            Stylesheet & katdoc & \stylesheetVersion \\
+            \hline
+            \docSoftware
+        \end{tabularx}
+        \end{center}
+        \end{minipage}
+
+        \vspace{1cm}
+
+        % Company Details
+        \begin{minipage}[c]{\textwidth}
+        \begin{center}
+        \LARGE
+        \textbf{Company Details}
+        \vspace{0.5cm}
+
+        \normalsize
+        \begin{tabular}{|l|l|}
+            \hline
+            Name & SKA South Africa Office \\
+            \hline
+            \multirow{5}{*}{Physical/Postal Address} & Third Floor \\ & The Park \\ & Park Road \\ & Pinelands \\ & 7405 \\
+            \hline
+            Tel. & +27 21 506 7300 \\
+            \hline
+            Fax & +27 21 506 7375 \\
+            \hline
+            Website & http://www.ska.ac.za/ \\
+            \hline
+        \end{tabular}
+        \end{center}
+        \end{minipage}
+
+        \end{center}
+        \vspace{1cm}
+
+        % reset table cell padding
+        \renewcommand{\arraystretch}{1.0}
+
+    \end{titlepage}
+
+}
+
+% General Page Header and Footer
+
+\clearpage
+
+\pagestyle{fancy}
+
+\fancyhead{} % clear all header fields 
+\fancyhead[C]{\docClassification}
+\fancyhead[R]{\docId \\ Revision: \docRevision}
+
+\fancyfoot{} % clear all footer fields 
+\fancyfoot[L]{\docDate \\ \footnotesize \docCopyright}
+\fancyfoot[C]{\docClassification}
+\fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
+
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% Abbreviations
+\newcommand{\abbrev}[2]{
+#1 & #2\\
+\hline
+}
+
+\newcommand{\listofabbreviations}{
+    \section*{List of Abbreviations}
+
+    \begin{tabular}{|p{0.1\textwidth}|p{0.9\textwidth}|}
+    \hline
+    \abbreviations
+    \end{tabular}
+}
+
+% The entire beginning part of the document
+
+\newcommand{\makekatdocbeginning}{
+\maketitle
+
+\newpage{}
+
+\tableofcontents{}
+\newpage{}
+
+\listoffigures
+
+\listoftables
+
+\listofabbreviations
+\newpage{}
+}
+
+% Bibliography
+
+\renewenvironment{thebibliography}[1]
+{\list{\@biblabel{\@arabic\c@enumiv}}%
+    {\settowidth\labelwidth{\@biblabel{#1}}%
+        \leftmargin\labelwidth
+        \advance\leftmargin\labelsep
+        \itemindent 1.5em
+        \@openbib@code
+        \usecounter{enumiv}%
+        \let\p@enumiv\@empty
+        \renewcommand\theenumiv{\@arabic\c@enumiv}}%
+\sloppy
+\clubpenalty4000
+\@clubpenalty \clubpenalty
+\widowpenalty4000%
+\sfcode`\.\@m}
+{\def\@noitemerr
+{\@latex@warning{Empty `thebibliography' environment}}%
+\endlist}
+
+\newcounter{countDocs}
+\setcounter{countDocs}{0}
+
+\newcommand{\adddocument}[4]{
+  \item \addtocounter{countDocs}{1} \arabic{countDocs} - #1, \emph{#2 (#3)}, #4.
+}
+
+\newcommand{\references}[1]{
+\section{Applicable and Reference Documents}
+
+\subsection{Applicable Documents}
+
+The following documents are applicable to the extent stated herein.  In the event of conflict between the contents of the applicable documents and this document, the applicable documents shall take precedence.
+
+\ifdefined\applicableDocs
+    \begin{itemize}
+    \applicableDocs
+    \end{itemize}
+\else
+    \begin{itemize}
+    \item \emph{No applicable documents}
+    \end{itemize}
+\fi
+
+\subsection{Related Documents}
+
+The following documents are referenced in this document.  In the event of conflict between the contents of the referenced documents and this document, this document shall take precedence.
+
+% \ifdefined\referenceDocs
+%     \begin{itemize}
+%     \referenceDocs
+%     \end{itemize}
+% \else
+%     \begin{itemize}
+%     \item \emph{No reference documents}
+%     \end{itemize}
+% \fi
+
+% \bibliographystyle{plain}
+\bibliographystyle{unsrt}
+\bibliography{#1}
+}
